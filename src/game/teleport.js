@@ -9,6 +9,8 @@ export class TeleportSystem {
     this.minCost = 30;
     this.cooldown = 0;
     this.cooldownMax = 5;
+    this.gracePeriod = 0;
+    this.gracePeriodMax = 0.5;
   }
 
   calculateCost(currentDepth) {
@@ -32,14 +34,18 @@ export class TeleportSystem {
 
     this.active = true;
     this.progress = 0;
+    this.gracePeriod = this.gracePeriodMax;
     return { success: true, cost: check.cost };
   }
 
-  cancel() {
+  cancel(force = false) {
     if (this.active) {
+      if (!force && this.gracePeriod > 0) {
+        return false;
+      }
       this.active = false;
       this.progress = 0;
-      this.cooldown = 1;
+      this.cooldown = 0;
       return true;
     }
     return false;
@@ -51,6 +57,10 @@ export class TeleportSystem {
     }
 
     if (!this.active) return;
+
+    if (this.gracePeriod > 0) {
+      this.gracePeriod -= dt;
+    }
 
     this.progress += dt / this.duration;
 

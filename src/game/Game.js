@@ -310,7 +310,7 @@ export class Game {
           this.hazards.spawnPoisonClouds(
             target.x * TILE_SIZE + TILE_SIZE / 2,
             target.y * TILE_SIZE + TILE_SIZE / 2,
-            8
+            5
           );
           this.ui.showWarning('☠️ 毒气释放！小心绿色毒云', 2500);
         }

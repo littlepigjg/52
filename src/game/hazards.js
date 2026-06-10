@@ -1,16 +1,18 @@
 import { TILE_SIZE, TILE_TYPES } from './constants.js';
 
 export class PoisonGasCloud {
-  constructor(x, y, tileX, tileY) {
-    this.x = x;
-    this.y = y;
+  constructor(x, y, tileX, tileY, index = 0, total = 5) {
+    const angle = (index / total) * Math.PI * 2;
+    const spread = TILE_SIZE * 1.5;
+    this.x = x + Math.cos(angle) * spread * (0.3 + Math.random() * 0.7);
+    this.y = y + Math.sin(angle) * spread * (0.3 + Math.random() * 0.7);
     this.tileX = tileX;
     this.tileY = tileY;
-    this.vx = (Math.random() - 0.5) * 0.3;
-    this.vy = -0.1 - Math.random() * 0.1;
-    this.size = TILE_SIZE * (0.8 + Math.random() * 0.4);
-    this.life = 600 + Math.random() * 400;
-    this.maxLife = 1000;
+    this.vx = Math.cos(angle) * 0.4 + (Math.random() - 0.5) * 0.2;
+    this.vy = -0.2 - Math.random() * 0.15;
+    this.size = TILE_SIZE * (0.9 + Math.random() * 0.3);
+    this.life = 500 + Math.random() * 300;
+    this.maxLife = 800;
     this.damageTimer = 0;
     this.pulsePhase = Math.random() * Math.PI * 2;
   }
@@ -57,14 +59,13 @@ export class HazardManager {
   }
 
   spawnPoisonClouds(x, y, count = 5) {
+    count = Math.min(count, 5);
     for (let i = 0; i < count; i++) {
-      const offsetX = (Math.random() - 0.5) * TILE_SIZE;
-      const offsetY = (Math.random() - 0.5) * TILE_SIZE;
       this.poisonClouds.push(new PoisonGasCloud(
-        x + offsetX,
-        y + offsetY,
+        x, y,
         Math.floor(x / TILE_SIZE),
-        Math.floor(y / TILE_SIZE)
+        Math.floor(y / TILE_SIZE),
+        i, count
       ));
     }
   }
@@ -92,10 +93,10 @@ export class HazardManager {
 
       if (dist < cloud.getDamageRadius()) {
         cloud.damageTimer += dt;
-        if (cloud.damageTimer >= 0.3) {
+        if (cloud.damageTimer >= 0.5) {
           cloud.damageTimer = 0;
           const intensity = 1 - dist / cloud.getDamageRadius();
-          onDamage('poison', intensity * 4);
+          onDamage('poison', intensity * 2);
         }
       }
     }
