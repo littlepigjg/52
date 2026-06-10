@@ -113,25 +113,31 @@ export class Player {
     return true;
   }
 
-  sellOres(prices) {
+  sellOres(prices, depthBonusMultiplier = 1) {
     let total = 0;
+    let bonus = 0;
     for (const [type, count] of Object.entries(this.cargo)) {
-      total += count * prices[type];
+      const baseValue = count * prices[type];
+      total += baseValue;
+      bonus += baseValue * (depthBonusMultiplier - 1);
       this.cargo[type] = 0;
     }
-    this.gold += total;
+    const finalTotal = Math.floor(total + bonus);
+    this.gold += finalTotal;
     this.cargoUsed = 0;
-    return total;
+    return { total: finalTotal, base: Math.floor(total), bonus: Math.floor(bonus) };
   }
 
-  sellOre(type, prices) {
+  sellOre(type, prices, depthBonusMultiplier = 1) {
     const count = this.cargo[type];
-    if (count <= 0) return 0;
-    const money = count * prices[type];
-    this.gold += money;
+    if (count <= 0) return { total: 0, base: 0, bonus: 0 };
+    const baseValue = count * prices[type];
+    const bonus = baseValue * (depthBonusMultiplier - 1);
+    const finalValue = Math.floor(baseValue + bonus);
+    this.gold += finalValue;
     this.cargoUsed -= count;
     this.cargo[type] = 0;
-    return money;
+    return { total: finalValue, base: Math.floor(baseValue), bonus: Math.floor(bonus) };
   }
 
   takeDamage(amount) {

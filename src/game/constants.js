@@ -142,3 +142,10 @@ export const UPGRADE_DEFS = {
     costs: [350, 800, 2000, 5000, 12000]
   }
 };
+
+export const DEPTH_BONUS_MULTIPLIER = 0.003;
+
+export const TELEPORT_COST_BASE = 30;
+export const TELEPORT_COST_PER_100M = 20;
+export const TELEPORT_DURATION = 2.5;
+export const TELEPORT_COOLDOWN = 5;

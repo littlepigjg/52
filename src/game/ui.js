@@ -1,17 +1,30 @@
-import { ORE_PRICES, ORE_NAMES, UPGRADE_DEFS, TILE_SIZE, SURFACE_Y } from './constants.js';
+import { ORE_PRICES, ORE_NAMES, UPGRADE_DEFS, TILE_SIZE, SURFACE_Y, DEPTH_BONUS_MULTIPLIER } from './constants.js';
 
 export class UIManager {
   constructor(game) {
     this.game = game;
     this.warningTimeout = null;
     this.setupShopButtons();
+    this.setupTeleportButton();
+  }
+
+  setupTeleportButton() {
+    document.getElementById('teleportBtn').addEventListener('click', () => {
+      this.game.tryTeleport();
+    });
   }
 
   setupShopButtons() {
     document.getElementById('sellAllBtn').addEventListener('click', () => {
-      const money = this.game.player.sellOres(ORE_PRICES);
-      if (money > 0) {
-        this.showWarning(`售出矿石获得 $${money}`, 1500, 'text-green-300');
+      const maxDepth = this.game.player.maxDepth;
+      const depthBonus = 1 + maxDepth * DEPTH_BONUS_MULTIPLIER;
+      const result = this.game.player.sellOres(ORE_PRICES, depthBonus);
+      if (result.total > 0) {
+        let msg = `售出矿石获得 $${result.total}`;
+        if (result.bonus > 0) {
+          msg += ` (含深度加成 +$${result.bonus})`;
+        }
+        this.showWarning(msg, 2000, 'text-green-300');
       }
       this.updateShop();
     });
@@ -55,6 +68,7 @@ export class UIManager {
 
   updateHUD() {
     const p = this.game.player;
+    const depth = Math.max(0, p.tileY - SURFACE_Y);
 
     this.setBar('fuel', p.fuel, p.maxFuel);
     this.setBar('oxygen', p.oxygen, p.maxOxygen);
@@ -63,7 +77,16 @@ export class UIManager {
     this.setBar('health', p.health, p.maxHealth);
 
     document.getElementById('goldText').textContent = Math.floor(p.gold);
-    document.getElementById('depthText').textContent = Math.max(0, p.tileY - SURFACE_Y);
+    document.getElementById('depthText').textContent = depth;
+
+    const depthBonus = Math.floor(depth * DEPTH_BONUS_MULTIPLIER * 100);
+    const bonusEl = document.getElementById('depthBonus');
+    if (depthBonus > 0) {
+      bonusEl.classList.remove('hidden');
+      document.getElementById('depthBonusText').textContent = `+${depthBonus}%`;
+    } else {
+      bonusEl.classList.add('hidden');
+    }
 
     document.getElementById('oreGold').textContent = p.cargo.gold;
     document.getElementById('oreIron').textContent = p.cargo.iron;
@@ -72,7 +95,52 @@ export class UIManager {
     document.getElementById('oreEmerald').textContent = p.cargo.emerald;
     document.getElementById('oreRuby').textContent = p.cargo.ruby;
 
+    this.updateTeleportUI();
     this.checkWarnings();
+  }
+
+  updateTeleportUI() {
+    const tele = this.game.teleport;
+    const p = this.game.player;
+    const depth = Math.max(0, p.tileY - SURFACE_Y);
+    const cost = tele.calculateCost(depth);
+
+    const btn = document.getElementById('teleportBtn');
+    const costEl = document.getElementById('teleportCost');
+    const progressWrap = document.getElementById('teleportProgressWrap');
+    const progressBar = document.getElementById('teleportProgressBar');
+    const cooldownEl = document.getElementById('teleportCooldown');
+    const cooldownText = document.getElementById('teleportCooldownText');
+
+    costEl.textContent = `$${cost}`;
+
+    if (depth < 2) {
+      btn.style.opacity = '0.4';
+      btn.style.cursor = 'not-allowed';
+      costEl.textContent = '已在地面';
+    } else {
+      btn.style.opacity = p.gold >= cost ? '1' : '0.6';
+      btn.style.cursor = 'pointer';
+    }
+
+    if (tele.isTeleporting()) {
+      progressWrap.classList.remove('hidden');
+      progressBar.style.width = tele.getProgressPercent() + '%';
+      btn.classList.add('hidden');
+      cooldownEl.classList.add('hidden');
+    } else {
+      progressWrap.classList.add('hidden');
+      btn.classList.remove('hidden');
+
+      const cooldown = tele.getCooldownPercent();
+      if (cooldown > 0) {
+        cooldownEl.classList.remove('hidden');
+        cooldownText.textContent = Math.ceil((cooldown / 100) * 5) + 's';
+        btn.style.opacity = '0.4';
+      } else {
+        cooldownEl.classList.add('hidden');
+      }
+    }
   }
 
   setBar(name, value, max) {

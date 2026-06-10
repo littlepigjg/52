@@ -42,7 +42,7 @@ export class Renderer {
     return { x: sx, y: sy };
   }
 
-  render(dt, world, player, enemies, bullets, particles, baseBuildingX) {
+  render(dt, world, player, enemies, bullets, particles, baseBuildingX, hazards = null, teleportSystem = null) {
     if (this.shakeTime > 0) {
       this.shakeTime -= dt;
       if (this.shakeTime <= 0) this.shakeStrength = 0;
@@ -51,13 +51,18 @@ export class Renderer {
     this.centerOn(player);
 
     this.renderSky();
+    this.renderBaseBeam(baseBuildingX);
     this.renderBase(baseBuildingX);
     this.renderWorld(world);
-    this.renderParticles(particles);
+    if (hazards) {
+      hazards.render(this.ctx, (x, y) => this.worldToScreen(x, y));
+    }
+    particles.render(this.ctx, (x, y) => this.worldToScreen(x, y));
     this.renderBullets(bullets);
     this.renderEnemies(enemies);
-    this.renderPlayer(player);
+    this.renderPlayer(player, teleportSystem);
     this.renderDarkness(player);
+    this.renderBaseArrow(baseBuildingX, player);
   }
 
   renderSky() {
@@ -80,14 +85,56 @@ export class Renderer {
     }
   }
 
+  renderBaseBeam(baseBuildingX) {
+    const baseCenterX = (baseBuildingX + 3) * TILE_SIZE - this.camX;
+    const baseTopY = (SURFACE_Y - 3) * TILE_SIZE - this.camY;
+    const time = Date.now() * 0.001;
+
+    if (baseCenterX < -100 || baseCenterX > this.canvas.width + 100) return;
+
+    const beamWidth = TILE_SIZE * 2;
+    const gradient = this.ctx.createLinearGradient(
+      baseCenterX - beamWidth / 2, 0,
+      baseCenterX + beamWidth / 2, 0
+    );
+    const pulseAlpha = 0.15 + Math.sin(time * 2) * 0.08;
+    gradient.addColorStop(0, `rgba(255, 215, 0, 0)`);
+    gradient.addColorStop(0.3, `rgba(255, 215, 0, ${pulseAlpha})`);
+    gradient.addColorStop(0.5, `rgba(255, 255, 150, ${pulseAlpha + 0.1})`);
+    gradient.addColorStop(0.7, `rgba(255, 215, 0, ${pulseAlpha})`);
+    gradient.addColorStop(1, `rgba(255, 215, 0, 0)`);
+
+    this.ctx.fillStyle = gradient;
+    this.ctx.fillRect(baseCenterX - beamWidth / 2, 0, beamWidth, baseTopY + TILE_SIZE);
+
+    for (let i = 0; i < 5; i++) {
+      const particleY = ((time * 50 + i * 80) % (baseTopY + TILE_SIZE * 4));
+      const particleX = baseCenterX + Math.sin(time * 3 + i) * TILE_SIZE * 0.8;
+      const alpha = particleY < baseTopY ? 0.6 : 0.6 - (particleY - baseTopY) / (TILE_SIZE * 4) * 0.6;
+      if (alpha > 0) {
+        this.ctx.fillStyle = `rgba(255, 255, 100, ${alpha})`;
+        this.ctx.beginPath();
+        this.ctx.arc(particleX, particleY, 2 + (i % 2), 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+    }
+  }
+
   renderBase(baseBuildingX) {
     const baseScreenX = baseBuildingX * TILE_SIZE - this.camX;
     const baseScreenY = (SURFACE_Y - 3) * TILE_SIZE - this.camY;
 
     if (baseScreenX + TILE_SIZE * 6 < 0 || baseScreenX > this.canvas.width) return;
 
+    const time = Date.now() * 0.001;
+
+    this.ctx.shadowColor = '#FFD700';
+    this.ctx.shadowBlur = 20 + Math.sin(time * 2) * 10;
+
     this.ctx.fillStyle = '#4A3728';
     this.ctx.fillRect(baseScreenX, baseScreenY, TILE_SIZE * 6, TILE_SIZE * 3);
+
+    this.ctx.shadowBlur = 0;
 
     this.ctx.fillStyle = '#5D4632';
     this.ctx.beginPath();
@@ -100,14 +147,74 @@ export class Renderer {
     this.ctx.fillStyle = '#654321';
     this.ctx.fillRect(baseScreenX + TILE_SIZE * 0.5, baseScreenY + TILE_SIZE * 0.5, TILE_SIZE * 1.5, TILE_SIZE * 1.5);
 
-    this.ctx.fillStyle = '#87CEEB';
+    const windowGlow = 0.6 + Math.sin(time * 1.5) * 0.3;
+    this.ctx.fillStyle = `rgba(135, 206, 235, ${windowGlow})`;
+    this.ctx.shadowColor = '#87CEEB';
+    this.ctx.shadowBlur = 10;
     this.ctx.fillRect(baseScreenX + TILE_SIZE * 3.5, baseScreenY + TILE_SIZE * 0.5, TILE_SIZE * 1.2, TILE_SIZE);
     this.ctx.fillRect(baseScreenX + TILE_SIZE * 5, baseScreenY + TILE_SIZE * 0.5, TILE_SIZE * 0.6, TILE_SIZE);
+    this.ctx.shadowBlur = 0;
 
     this.ctx.fillStyle = '#FFD700';
-    this.ctx.font = '16px sans-serif';
+    this.ctx.font = 'bold 18px sans-serif';
     this.ctx.textAlign = 'center';
+    this.ctx.shadowColor = '#000';
+    this.ctx.shadowBlur = 4;
     this.ctx.fillText('🏭 采矿基地', baseScreenX + TILE_SIZE * 3, baseScreenY - TILE_SIZE * 0.3);
+    this.ctx.shadowBlur = 0;
+  }
+
+  renderBaseArrow(baseBuildingX, player) {
+    const baseCenterX = (baseBuildingX + 3) * TILE_SIZE;
+    const baseY = (SURFACE_Y - 1) * TILE_SIZE;
+    const depth = player.tileY - SURFACE_Y;
+
+    if (depth < 3) return;
+
+    const playerScreen = this.worldToScreen(player.x, player.y);
+    const baseScreen = this.worldToScreen(baseCenterX, baseY);
+
+    const dx = baseCenterX - player.x;
+    const dy = baseY - player.y;
+    const angle = Math.atan2(dy, dx);
+
+    const margin = 100;
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    const radius = Math.min(centerX, centerY) - margin;
+
+    const arrowX = centerX + Math.cos(angle) * radius;
+    const arrowY = centerY + Math.sin(angle) * radius;
+
+    this.ctx.save();
+    this.ctx.translate(arrowX, arrowY);
+    this.ctx.rotate(angle);
+
+    const pulse = 1 + Math.sin(Date.now() * 0.005) * 0.15;
+    this.ctx.fillStyle = `rgba(255, 215, 0, ${0.8 * pulse})`;
+    this.ctx.shadowColor = '#FFD700';
+    this.ctx.shadowBlur = 15;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(20 * pulse, 0);
+    this.ctx.lineTo(-10 * pulse, -12);
+    this.ctx.lineTo(-5 * pulse, 0);
+    this.ctx.lineTo(-10 * pulse, 12);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    this.ctx.restore();
+
+    const dist = Math.floor(Math.sqrt(dx * dx + dy * dy) / TILE_SIZE);
+    this.ctx.shadowBlur = 0;
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    this.ctx.font = 'bold 12px sans-serif';
+    this.ctx.textAlign = 'center';
+    const textX = Math.max(margin, Math.min(this.canvas.width - margin, arrowX));
+    const textY = Math.max(margin + 30, Math.min(this.canvas.height - margin, arrowY + 25));
+    this.ctx.fillRect(textX - 40, textY - 12, 80, 18);
+    this.ctx.fillStyle = '#FFD700';
+    this.ctx.fillText(`🏭 ${dist}m`, textX, textY);
   }
 
   renderWorld(world) {
@@ -215,10 +322,28 @@ export class Renderer {
     }
   }
 
-  renderPlayer(player) {
+  renderPlayer(player, teleportSystem = null) {
     const screen = this.worldToScreen(player.x, player.y);
     const size = player.width;
     const half = size / 2;
+    const time = Date.now() * 0.001;
+
+    if (teleportSystem && teleportSystem.isTeleporting()) {
+      const progress = teleportSystem.progress;
+      const rings = 3;
+      for (let i = 0; i < rings; i++) {
+        const ringProgress = ((progress * 3 + i / rings) % 1);
+        const ringSize = size * 1.5 + ringProgress * size * 4;
+        const alpha = (1 - ringProgress) * 0.6;
+        this.ctx.strokeStyle = `rgba(155, 89, 182, ${alpha})`;
+        this.ctx.lineWidth = 3 - ringProgress * 2;
+        this.ctx.beginPath();
+        this.ctx.arc(screen.x, screen.y, ringSize, 0, Math.PI * 2);
+        this.ctx.stroke();
+      }
+
+      this.ctx.globalAlpha = 0.5 + Math.sin(time * 15) * 0.3;
+    }
 
     this.ctx.save();
     this.ctx.translate(screen.x, screen.y);
@@ -232,7 +357,7 @@ export class Renderer {
     this.ctx.rotate(rotation);
 
     if (player.damageFlash > 0 && Math.floor(player.damageFlash * 20) % 2 === 0) {
-      this.ctx.globalAlpha = 0.5;
+      this.ctx.globalAlpha *= 0.5;
     }
 
     this.ctx.fillStyle = '#3498DB';
@@ -291,6 +416,8 @@ export class Renderer {
     this.ctx.fillRect(barX, barY, barWidth, barHeight);
     this.ctx.fillStyle = '#E74C3C';
     this.ctx.fillRect(barX, barY, barWidth * (player.health / player.maxHealth), barHeight);
+
+    this.ctx.globalAlpha = 1;
   }
 
   renderEnemies(enemies) {
