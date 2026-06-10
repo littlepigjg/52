@@ -9,6 +9,7 @@ export class TeleportSystem {
     this.minCost = 30;
     this.cooldown = 0;
     this.cooldownMax = 5;
+    this.cooldownOnCancel = 1.5;
     this.gracePeriod = 0;
     this.gracePeriodMax = 0.5;
   }
@@ -45,7 +46,7 @@ export class TeleportSystem {
       }
       this.active = false;
       this.progress = 0;
-      this.cooldown = 0;
+      this.cooldown = this.cooldownOnCancel;
       return true;
     }
     return false;

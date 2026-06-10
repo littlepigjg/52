@@ -13,7 +13,6 @@ export class PoisonGasCloud {
     this.size = TILE_SIZE * (0.9 + Math.random() * 0.3);
     this.life = 500 + Math.random() * 300;
     this.maxLife = 800;
-    this.damageTimer = 0;
     this.pulsePhase = Math.random() * Math.PI * 2;
   }
 
@@ -56,6 +55,9 @@ export class HazardManager {
   constructor() {
     this.poisonClouds = [];
     this.collapseWarnings = [];
+    this.damageTimer = 0;
+    this.damageInterval = 0.6;
+    this.maxDamagePerTick = 3;
   }
 
   spawnPoisonClouds(x, y, count = 5) {
@@ -80,23 +82,62 @@ export class HazardManager {
   }
 
   update(dt, world, player, onDamage) {
-    for (let i = this.poisonClouds.length - 1; i >= 0; i--) {
-      const cloud = this.poisonClouds[i];
-      if (!cloud.update(dt, world)) {
-        this.poisonClouds.splice(i, 1);
-        continue;
+    const clouds = this.poisonClouds;
+
+    for (let i = clouds.length - 1; i >= 0; i--) {
+      const cloud = clouds[i];
+
+      let repelX = 0;
+      let repelY = 0;
+      for (let j = 0; j < clouds.length; j++) {
+        if (i === j) continue;
+        const other = clouds[j];
+        const dx = cloud.x - other.x;
+        const dy = cloud.y - other.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = TILE_SIZE * 0.8;
+        if (dist < minDist && dist > 0.1) {
+          const force = (minDist - dist) / minDist * 0.3;
+          repelX += (dx / dist) * force;
+          repelY += (dy / dist) * force;
+        }
+      }
+      cloud.vx += repelX;
+      cloud.vy += repelY;
+
+      const maxSpeed = 0.8;
+      const speed = Math.sqrt(cloud.vx * cloud.vx + cloud.vy * cloud.vy);
+      if (speed > maxSpeed) {
+        cloud.vx = (cloud.vx / speed) * maxSpeed;
+        cloud.vy = (cloud.vy / speed) * maxSpeed;
       }
 
-      const dx = player.x - cloud.x;
-      const dy = player.y - cloud.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (!cloud.update(dt, world)) {
+        clouds.splice(i, 1);
+        continue;
+      }
+    }
 
-      if (dist < cloud.getDamageRadius()) {
-        cloud.damageTimer += dt;
-        if (cloud.damageTimer >= 0.5) {
-          cloud.damageTimer = 0;
+    this.damageTimer += dt;
+    if (this.damageTimer >= this.damageInterval) {
+      this.damageTimer = 0;
+
+      let totalIntensity = 0;
+      for (const cloud of clouds) {
+        const dx = player.x - cloud.x;
+        const dy = player.y - cloud.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < cloud.getDamageRadius()) {
           const intensity = 1 - dist / cloud.getDamageRadius();
-          onDamage('poison', intensity * 2);
+          totalIntensity += intensity;
+        }
+      }
+
+      if (totalIntensity > 0) {
+        const damage = Math.min(this.maxDamagePerTick, totalIntensity * 2);
+        if (damage > 0.1) {
+          onDamage('poison', damage);
         }
       }
     }

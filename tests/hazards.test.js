@@ -118,16 +118,20 @@ describe('HazardManager', () => {
     }
   });
 
-  it('玩家靠近毒气云会受到伤害', () => {
-    hm.spawnPoisonClouds(mockPlayer.x, mockPlayer.y, 5);
-    const startHealth = mockPlayer.health;
+  it('毒气云不应该有独立的damageTimer（改为全局计时器）', () => {
+    const cloud = new PoisonGasCloud(400, 600, 10, 15, 0, 5);
+    expect(cloud.damageTimer).toBeUndefined();
+  });
 
+  it('玩家靠近毒气云会受到伤害（全局计时器）', () => {
+    hm.spawnPoisonClouds(mockPlayer.x, mockPlayer.y, 5);
     for (const cloud of hm.poisonClouds) {
       cloud.x = mockPlayer.x;
       cloud.y = mockPlayer.y;
     }
+    const startHealth = mockPlayer.health;
 
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 12; i++) {
       hm.update(0.1, mockWorld, mockPlayer, (type, dmg) => {
         damageEvents.push({ type, dmg });
         mockPlayer.health -= dmg;
@@ -138,9 +142,76 @@ describe('HazardManager', () => {
     for (const ev of damageEvents) {
       expect(ev.type).toBe('poison');
       expect(ev.dmg).toBeGreaterThan(0);
-      expect(ev.dmg).toBeLessThanOrEqual(2);
+      expect(ev.dmg).toBeLessThanOrEqual(hm.maxDamagePerTick + 0.01);
     }
     expect(mockPlayer.health).toBeLessThan(startHealth);
+  });
+
+  it('多个毒气云重叠时伤害有上限', () => {
+    hm.spawnPoisonClouds(mockPlayer.x, mockPlayer.y, 5);
+    for (const cloud of hm.poisonClouds) {
+      cloud.x = mockPlayer.x;
+      cloud.y = mockPlayer.y;
+    }
+
+    const damages = [];
+    for (let i = 0; i < 12; i++) {
+      hm.update(0.1, mockWorld, mockPlayer, (type, dmg) => {
+        damages.push(dmg);
+        mockPlayer.health -= dmg;
+      });
+    }
+
+    expect(damages.length).toBeGreaterThan(0);
+    for (const dmg of damages) {
+      expect(dmg).toBeLessThanOrEqual(hm.maxDamagePerTick + 0.01);
+    }
+  });
+
+  it('毒气云之间有排斥力，避免扎堆', () => {
+    for (let i = 0; i < 5; i++) {
+      const cloud = new PoisonGasCloud(mockPlayer.x, mockPlayer.y, 10, 15, i, 5);
+      cloud.x = mockPlayer.x + (Math.random() - 0.5) * 10;
+      cloud.y = mockPlayer.y + (Math.random() - 0.5) * 10;
+      cloud.vx = 0;
+      cloud.vy = 0;
+      hm.poisonClouds.push(cloud);
+    }
+
+    const startPositions = hm.poisonClouds.map(c => ({ x: c.x, y: c.y }));
+
+    for (let i = 0; i < 20; i++) {
+      hm.update(0.1, mockWorld, mockPlayer, () => {});
+    }
+
+    let totalMoved = 0;
+    for (let i = 0; i < hm.poisonClouds.length; i++) {
+      const dx = hm.poisonClouds[i].x - startPositions[i].x;
+      const dy = hm.poisonClouds[i].y - startPositions[i].y;
+      totalMoved += Math.sqrt(dx * dx + dy * dy);
+    }
+    expect(totalMoved).toBeGreaterThan(10);
+
+    for (let i = 0; i < hm.poisonClouds.length; i++) {
+      for (let j = i + 1; j < hm.poisonClouds.length; j++) {
+        const dx = hm.poisonClouds[i].x - hm.poisonClouds[j].x;
+        const dy = hm.poisonClouds[i].y - hm.poisonClouds[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        expect(dist).toBeGreaterThan(TILE_SIZE * 0.3);
+      }
+    }
+  });
+
+  it('毒气云速度有上限，不会无限加速', () => {
+    const cloud = new PoisonGasCloud(mockPlayer.x, mockPlayer.y, 10, 15, 0, 5);
+    cloud.vx = 10;
+    cloud.vy = 10;
+    hm.poisonClouds.push(cloud);
+
+    hm.update(0.1, mockWorld, mockPlayer, () => {});
+
+    const speed = Math.sqrt(cloud.vx * cloud.vx + cloud.vy * cloud.vy);
+    expect(speed).toBeLessThanOrEqual(0.81);
   });
 
   it('玩家远离毒气云不会受伤', () => {

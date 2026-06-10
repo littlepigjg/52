@@ -65,14 +65,14 @@ describe('TeleportSystem', () => {
     expect(result.reason).toContain('传送中');
   });
 
-  it('取消传送后不应有冷却时间', () => {
+  it('取消传送后应该有1.5秒短冷却', () => {
     tp.start(mockPlayer);
     expect(tp.isTeleporting()).toBe(true);
     const cancelled = tp.cancel(true);
     expect(cancelled).toBe(true);
     expect(tp.isTeleporting()).toBe(false);
-    expect(tp.cooldown).toBe(0);
-    expect(tp.getCooldownPercent()).toBe(0);
+    expect(tp.cooldown).toBe(tp.cooldownOnCancel);
+    expect(tp.getCooldownPercent()).toBeCloseTo((1.5 / 5) * 100);
   });
 
   it('保护期内非强制取消应该失败', () => {
@@ -98,10 +98,21 @@ describe('TeleportSystem', () => {
     expect(tp.isTeleporting()).toBe(false);
   });
 
-  it('取消后可以立刻重新启动传送（无冷却）', () => {
+  it('取消后需要等1.5秒冷却才能重开，比完整冷却短', () => {
     tp.start(mockPlayer);
     tp.cancel(true);
-    const result = tp.start(mockPlayer);
+    expect(tp.cooldown).toBe(1.5);
+
+    let result = tp.start(mockPlayer);
+    expect(result.can).toBe(false);
+    expect(result.reason).toContain('冷却中');
+
+    tp.update(1, mockPlayer, null, mockParticles);
+    result = tp.start(mockPlayer);
+    expect(result.can).toBe(false);
+
+    tp.update(0.6, mockPlayer, null, mockParticles);
+    result = tp.start(mockPlayer);
     expect(result.success).toBe(true);
   });
 
